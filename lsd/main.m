@@ -1,7 +1,7 @@
 /* lsd: the Launch Services database daemon (Mach service com.apple.lsd.mapdb, protocol _LSDReadProtocol), wire-compatible with macOS 26.7.2.
  * Protocol, replies and store format: research/docs/LAUNCHSERVICES-WIRE.md (github.com/pearOS-bsd/research).
- * The database is written by our own code (store/csstore.c, store/lsdb.c) to the place the Mac uses:
- *   <DARWIN_USER_DIR>/0/com.apple.LaunchServices.dv/com.apple.LaunchServices-20971545-v2.csstore
+ * The database is written by our own code (store/csstore.c, store/lsdb.c, lsd/apps.m) to the place the Mac uses:
+ *   <DARWIN_USER_DIR>/com.apple.LaunchServices.dv/com.apple.LaunchServices-20971545-v2.csstore (DARWIN_USER_DIR ends in 0/)
  * and handed to every client by getServerStoreNonBlockingWithCompletionHandler: as the Mac's lsd does (an _CSStore whose XPC representation is the
  * whole file, and the FSNode of the file).  The interface and the classes on the wire (_CSStore, FSNode) come from CoreServices at run time.
  * Our own code (BSD-2-Clause). */
@@ -11,6 +11,7 @@
 #import <sys/stat.h>
 #import <unistd.h>
 #import "../store/lsdb.h"
+#import "apps.h"
 
 #define MSG(T, ...) ((T (*)(__VA_ARGS__))objc_msgSend)
 
@@ -31,7 +32,8 @@ static NSError *OSStatusError(int code, NSString *message)
 static NSString *StorePath(void)
 {
 	char buf[1024];
-	NSString *dir = confstr(_CS_DARWIN_USER_DIR, buf, sizeof buf) ? [@(buf) stringByAppendingPathComponent: @"0/com.apple.LaunchServices.dv"] : @"/var/db/lsd";
+	if (getenv("LSD_STORE")) return @(getenv("LSD_STORE"));            /* tests on a Mac, where the real directory is the data vault of Apple's lsd */
+	NSString *dir = confstr(_CS_DARWIN_USER_DIR, buf, sizeof buf) ? [@(buf) stringByAppendingPathComponent: @"com.apple.LaunchServices.dv"] : @"/var/db/lsd";
 	[[NSFileManager defaultManager] createDirectoryAtPath: dir withIntermediateDirectories: YES attributes: @{ NSFilePosixPermissions: @0755 } error: NULL];
 	return [dir stringByAppendingPathComponent: [NSString stringWithFormat: @"com.apple.LaunchServices-%u-v2.csstore", LS_SCHEMA_VERSION]];
 }
@@ -60,11 +62,18 @@ static BOOL ReadPrevious(NSString *path, uint8_t uuid[16], uint64_t *seq)
 	uint64_t seq = 0;
 	if (ReadPrevious(self.storePath, in.uuid, &seq)) in.sequence = seq + 1;
 	else { [[NSUUID UUID] getUUIDBytes: in.uuid]; in.sequence = 1; }
-	cs_store *s = ls_db_new(&in);
+	ls_db *db = ls_db_new(&in);
+	if (!db) return NO;
+	/* the applications of the system, registered when the database is made (the Mac's lsd seeds its database the same way) */
+	uint32_t container = LSDVolumeContainer(db);
+	NSArray *dirs = @[ @"/System/Applications", @"/System/Applications/Utilities", @"/System/Library/CoreServices", @"/Applications", @"/Applications/Utilities" ];
+	NSUInteger napps = LSDRegisterApplicationsIn(db, dirs, container);
+	in.sequence = ls_sequence(db);
 	size_t n = 0;
-	uint8_t *b = s ? cs_store_build(s, 1, &n) : NULL;
-	cs_store_free(s);
+	uint8_t *b = ls_db_build(db, &n);
+	ls_db_free(db);
 	if (!b) return NO;
+	Log(@"%lu applications registered", (unsigned long)napps);
 	NSData *d = [NSData dataWithBytesNoCopy: b length: n freeWhenDone: YES];
 	NSString *tmp = [self.storePath stringByAppendingFormat: @".%d", getpid()];
 	BOOL ok = [d writeToFile: tmp options: 0 error: NULL] && chmod(tmp.fileSystemRepresentation, 0644) == 0 && rename(tmp.fileSystemRepresentation, self.storePath.fileSystemRepresentation) == 0;
