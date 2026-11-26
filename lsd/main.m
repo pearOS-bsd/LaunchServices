@@ -143,8 +143,8 @@ static BOOL ReadPrevious(NSString *path, uint8_t uuid[16], uint64_t *seq)
 - (void)unregisterBundleUnit:(unsigned)unit options:(unsigned)o completionHandler:(void (^)(BOOL, NSError *))reply { Log(@"modify: unregisterBundleUnit %u", unit); reply(YES, nil); }
 - (void)registerContainerURL:(NSURL *)url completionHandler:(void (^)(unsigned, NSError *))reply { Log(@"modify: registerContainerURL %@", url); reply(4, nil); }
 /* the Mac's lsd answers with the 24-byte Container record of the volume, current state (captured: 13000100 c42ab430 67456400 00000000 04000000 00000000 for unit 4);
- * a nil answer makes the client ask again and fail.  Ours: the record as it is in our database (all zero: the volume state is not computed yet, fields not decoded) */
-- (void)updateContainerUnit:(unsigned)unit completionHandler:(void (^)(NSData *, NSError *))reply { Log(@"modify: updateContainerUnit %u", unit); uint8_t z[24] = { 0 }; reply([NSData dataWithBytes: z length: sizeof z], nil); }
+ * ours: the same layout computed for "/" (LSDContainerRecord, state 1 = mounted) */
+- (void)updateContainerUnit:(unsigned)unit completionHandler:(void (^)(NSData *, NSError *))reply { Log(@"modify: updateContainerUnit %u", unit); uint8_t rec[24]; LSDContainerRecord(rec); reply([NSData dataWithBytes: rec length: sizeof rec], nil); }
 - (void)removeContainer:(unsigned)unit { Log(@"modify: removeContainer %u", unit); }
 - (void)registerExtensionPoint:(NSString *)n platform:(unsigned)p declaringURL:(NSURL *)u withInfo:(NSDictionary *)i completionHandler:(void (^)(BOOL, NSError *))reply { Log(@"modify: registerExtensionPoint %@", n); reply(YES, nil); }
 - (void)unregisterExtensionPoint:(NSString *)n platform:(unsigned)p withVersion:(NSString *)v parentBundleUnit:(unsigned)b completionHandler:(void (^)(BOOL, NSError *))reply { Log(@"modify: unregisterExtensionPoint %@", n); reply(YES, nil); }

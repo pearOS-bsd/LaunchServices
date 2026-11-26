@@ -70,10 +70,30 @@ static void Version(uint8_t *b, size_t o, NSString *s)
 	p64(b, o + 24, 0);
 }
 
+/* The Container record of the volume holding the system applications (LaunchServices _LSContainerDataNeedsUpdate / _LSContainerAddWithNode, decompiled):
+ *   u16 flags      0x13 = 0x02 root volume node | 0x10 not translocated/preboot | 0x01 local volume
+ *   i8  state      +2: 1 mounted, 0 unknown (the client asks lsd to update it), -1 unmounted
+ *   i32 checked    +4: CFAbsoluteTime of the last state check (only read when flags & 0x28)
+ *   u64 volumeID   +8: first 8 bytes of NSURLVolumeIdentifierKey (NSData) of the volume's root
+ *   u32 alias      +16: Alias unit of the volume (0: the client uses the flags to find the node), u32 +20: second alias
+ * With state != 0 the client takes the record as it is and never calls updateContainerUnit. */
+void LSDContainerRecord(uint8_t rec[24])
+{
+	memset(rec, 0, 24);
+	NSData *vid = nil;
+	[[NSURL fileURLWithPath: @"/"] getResourceValue: &vid forKey: NSURLVolumeIdentifierKey error: NULL];
+	uint64_t id64 = 0;
+	if ([vid isKindOfClass: [NSData class]]) memcpy(&id64, vid.bytes, MIN(vid.length, (NSUInteger)8));
+	rec[0] = 0x13; rec[2] = 1;
+	p32(rec, 4, (uint32_t)(CFAbsoluteTimeGetCurrent()));
+	p64(rec, 8, id64);
+}
+
 uint32_t LSDVolumeContainer(ls_db *db)
 {
-	uint8_t z[24] = { 0 };                /* one all-zero Container is enough in a database of our own (5.12): call once per database */
-	return ls_unit(db, LS_T_CONTAINER, z, sizeof z);
+	uint8_t rec[24];
+	LSDContainerRecord(rec);                /* call once per database */
+	return ls_unit(db, LS_T_CONTAINER, rec, sizeof rec);
 }
 
 uint32_t LSDRegisterApplication(ls_db *db, NSString *path, uint32_t container)
