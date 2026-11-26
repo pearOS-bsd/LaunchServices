@@ -15,4 +15,5 @@ Protocols, replies and the store format: `research/docs/LAUNCHSERVICES-WIRE.md` 
 Checked (2026-11-26):
 - The C writer produces the same bytes as `research/tools/launchservices/make_empty_store.py` (which Apple's `_CSStore` reader opens).
 - Mac VM, Apple's client against our `lsd` (service name redirected for the test process with `IconServices/test/redirect.c`): `+[LSRecord _is_getSequenceNumber:andUUID:]` (the call of IconServices) takes our database and returns our UUID; `+[LSBundleRecord bundleRecordWithBundleIdentifier:]` answers `kLSApplicationNotFoundErr` (no records yet). Open: the sequence number read back is 0 while the header says 1.
+- pearOS (ISO of 2026-11-20, `build-bsd.sh`, started as root next to the image's stack): our Dock gets the database from our `lsd` and goes past Launch Services; IconServices then generates its first icon (the Trash, `ISIcnsIcon` 58 pt) and the Dock receives it. Finder's icon comes back empty: Apple's recipe needs the Finder's Bundle record (the database has none yet).
 Next: Bundle records from the bundles on disk (`registerItemInfo` of `com.apple.lsd.modifydb`), Claim / Type records, `launchservicesd`.
