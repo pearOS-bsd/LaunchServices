@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.apple.lsd</string>
+	<key>MachServices</key>
+	<dict>
+		<key>com.apple.lsd.mapdb</key>
+		<true/>
+	</dict>
+	<key>Program</key>
+	<string>/usr/libexec/pearos/lsd</string>
+	<key>UserName</key>
+	<string>@USER@</string>
+</dict>
+</plist>
