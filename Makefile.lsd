@@ -4,5 +4,5 @@ OBJC = clang -fobjc-arc -Wall -O1
 build/lsd: lsd/main.m store/csstore.c store/lsdb.c store/csstore.h store/lsdb.h
 	mkdir -p build && $(OBJC) -o $@ lsd/main.m store/csstore.c store/lsdb.c -framework Foundation
 check:
-	$(CC) -O1 -Wall -o empty_store test/empty_store.c store/lsdb.c store/csstore.c && ./empty_store /tmp/ls-empty.csstore 5 7cec9dd7eac74aa5878eb3ce4db0524d 1794243379; rc=$$?; rm -f empty_store; exit $$rc
+	$(CC) -O1 -Wall -o empty_store test/empty_store.c store/lsdb.c store/csstore.c && ./empty_store /tmp/ls-empty.csstore 5 7cec9dd7eac74aa5878eb3ce4db0524d 1794243379 && ./empty_store /tmp/ls-bind.csstore 5 7cec9dd7eac74aa5878eb3ce4db0524d 1794243379 bind; rc=$$?; rm -f empty_store; exit $$rc
 .PHONY: check

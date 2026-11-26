@@ -17,11 +17,17 @@ cs_table *cs_table_add(cs_store *s, const char *name, uint32_t id, const void *e
 /* the number of id-map buckets (0 = the number of units, at least 16).  <string> and <array> need a power of two (the Mac's files use 8192) */
 cs_table *cs_table_find(cs_store *s, uint32_t id);
 void cs_table_set_buckets(cs_table *t, uint32_t nbuckets);
-uint8_t *cs_table_extra(cs_table *t, size_t *len);        /* the extra bytes, to patch after the table was added */
+uint8_t *cs_table_extra(cs_table *t, size_t *len);
+/* a raw block (not a unit) placed right after the table's units and id map; its file offset becomes the table's 4 extra bytes (the <string> cache).
+ * fn(ctx, file_offset, &len) returns malloc'ed bytes. */
+typedef uint8_t *(*cs_raw_fn)(void *ctx, uint32_t file_offset, size_t *len);
+void cs_table_set_raw(cs_table *t, cs_raw_fn fn, void *ctx);        /* the extra bytes, to patch after the table was added */
 /* adds a unit; uid 0 = the next id of the table.  Returns the unit id (0 on failure). */
 uint32_t cs_unit_add(cs_table *t, const void *payload, size_t len, uint32_t uid);
 /* the payload of a unit added before (to patch it), NULL if none */
 uint8_t *cs_unit_payload(cs_table *t, uint32_t uid, size_t *len);
+/* replaces the payload of a unit (adds it when absent); 0 on success */
+int cs_unit_set(cs_table *t, uint32_t uid, const void *payload, size_t len);
 /* the whole file (page-rounded), malloc'ed; *len = its length */
 uint8_t *cs_store_build(cs_store *s, uint32_t generation, size_t *len);
 /* the checksum of the header: crc32 with seed 0x6e797267 over bytes [100, used) */

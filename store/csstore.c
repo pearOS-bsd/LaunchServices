@@ -13,6 +13,7 @@ struct cs_table {
 	char name[48]; uint32_t id, next, nbuckets;
 	uint8_t *extra; size_t extra_len;
 	struct cs_unit *u; size_t nu, cap;
+	cs_raw_fn raw; void *raw_ctx;
 };
 struct cs_store { cs_table **t; size_t nt, cap; };
 
@@ -44,6 +45,7 @@ cs_table *cs_table_add(cs_store *s, const char *name, uint32_t id, const void *e
 cs_table *cs_table_find(cs_store *s, uint32_t id) { for (size_t i = 0; i < s->nt; i++) if (s->t[i]->id == id) return s->t[i]; return NULL; }
 void cs_table_set_buckets(cs_table *t, uint32_t nbuckets) { t->nbuckets = nbuckets; }
 uint8_t *cs_table_extra(cs_table *t, size_t *len) { if (len) *len = t->extra_len; return t->extra; }
+void cs_table_set_raw(cs_table *t, cs_raw_fn fn, void *ctx) { t->raw = fn; t->raw_ctx = ctx; }
 
 uint32_t cs_unit_add(cs_table *t, const void *payload, size_t len, uint32_t uid)
 {
@@ -61,6 +63,18 @@ uint8_t *cs_unit_payload(cs_table *t, uint32_t uid, size_t *len)
 {
 	for (size_t k = 0; k < t->nu; k++) if (t->u[k].id == uid) { if (len) *len = t->u[k].n; return t->u[k].p; }
 	return NULL;
+}
+
+int cs_unit_set(cs_table *t, uint32_t uid, const void *payload, size_t len)
+{
+	for (size_t k = 0; k < t->nu; k++) if (t->u[k].id == uid) {
+		uint8_t *p = malloc(len ? len : 1);
+		if (!p) return -1;
+		if (len) memcpy(p, payload, len);
+		free(t->u[k].p); t->u[k].p = p; t->u[k].n = len;
+		return 0;
+	}
+	return cs_unit_add(t, payload, len, uid) ? 0 : -1;
 }
 
 uint32_t cs_crc32(uint32_t crc, const uint8_t *p, size_t n)
@@ -135,6 +149,14 @@ uint8_t *cs_store_build(cs_store *s, uint32_t generation, size_t *len)
 		for (size_t k = 0; k < t->nu; k++) e[k] = (struct ent){ t->u[k].id, put_unit(&o, t->u[k].id >> 2, t->u[k].p, t->u[k].n) };
 		imap[i] = put_idmap(&o, e, t->nu, t->nbuckets);
 		free(e);
+		if (t->raw && t->extra_len >= 4 && !o.err) {
+			align4(&o);
+			uint32_t at = (uint32_t)o.n; size_t rn = 0;
+			uint8_t *rb = t->raw(t->raw_ctx, at, &rn);
+			if (!rb) { o.err = 1; break; }
+			put(&o, rb, rn); free(rb);
+			memcpy(t->extra, &at, 4);
+		}
 	}
 	/* the table units, now that the id maps are placed */
 	for (size_t i = 0; i < s->nt && !o.err; i++) {
