@@ -49,3 +49,12 @@ typedef NSUInteger NSXPCConnectionOptions;
 @interface NSUUID (LSCompat)
 + (instancetype)UUID;
 @end
+@interface NSArray (LSCompatBlocks)
+- (void)enumerateObjectsUsingBlock:(void (^)(id obj, NSUInteger idx, BOOL *stop))block;
+@end
+@interface NSDictionary (LSCompatBlocks)
+- (void)enumerateKeysAndObjectsUsingBlock:(void (^)(id key, id obj, BOOL *stop))block;
+@end
+@interface NSURL (LSCompatBookmark)
+- (NSData *)bookmarkDataWithOptions:(NSUInteger)options includingResourceValuesForKeys:(NSArray *)keys relativeToURL:(NSURL *)relativeURL error:(NSError **)error;
+@end

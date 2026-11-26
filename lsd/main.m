@@ -53,6 +53,9 @@ static BOOL ReadPrevious(NSString *path, uint8_t uuid[16], uint64_t *seq)
 
 @interface LSDReadService : NSObject <NSXPCListenerDelegate>
 @property (copy) NSString *storePath;
+@property (strong) NSMutableArray<NSString *> *registered;     /* bundles registered through com.apple.lsd.modifydb, kept in every rebuild */
+@property (assign) uint64_t sequence;
+- (BOOL)writeDatabase;
 @end
 
 @implementation LSDReadService
@@ -68,7 +71,9 @@ static BOOL ReadPrevious(NSString *path, uint8_t uuid[16], uint64_t *seq)
 	uint32_t container = LSDVolumeContainer(db);
 	NSArray *dirs = @[ @"/System/Applications", @"/System/Applications/Utilities", @"/System/Library/CoreServices", @"/Applications", @"/Applications/Utilities" ];
 	NSUInteger napps = LSDRegisterApplicationsIn(db, dirs, container);
+	for (NSString *p in self.registered) if (![dirs containsObject: p.stringByDeletingLastPathComponent] && LSDRegisterApplication(db, p, container)) napps++;	/* the system ones are in already */
 	in.sequence = ls_sequence(db);
+	self.sequence = in.sequence;
 	size_t n = 0;
 	uint8_t *b = ls_db_build(db, &n);
 	ls_db_free(db);
@@ -118,16 +123,79 @@ static BOOL ReadPrevious(NSString *path, uint8_t uuid[16], uint64_t *seq)
 }
 @end
 
+/* com.apple.lsd.modifydb (_LSDModifyProtocol, research/docs/LAUNCHSERVICES-WIRE.md 2.2): registration of a bundle a client found unregistered rebuilds the
+ * database with it (the next getServerStore... returns the new store, its sequence bumped); the other changes are answered with success and not kept yet. */
+@interface LSDModifyService : NSObject <NSXPCListenerDelegate>
+@property (weak) LSDReadService *db;
+@end
+@implementation LSDModifyService
+- (void)registerItemInfo:(id)info alias:(NSData *)alias diskImageAlias:(NSData *)dia bundleURL:(NSURL *)url installationPlist:(NSDictionary *)plist completionHandler:(void (^)(BOOL, unsigned, NSArray *, BOOL, NSError *))reply
+{
+	NSString *path = url.path.stringByStandardizingPath;
+	BOOL ok = NO;
+	if (path.length && [[NSFileManager defaultManager] fileExistsAtPath: [path stringByAppendingPathComponent: @"Contents/Info.plist"]]) {
+		if (![self.db.registered containsObject: path]) [self.db.registered addObject: path];
+		ok = [self.db writeDatabase];
+	}
+	Log(@"modify: registerItemInfo %@: %s (sequence %llu)", path, ok ? "registered" : "not a bundle", (unsigned long long)self.db.sequence);
+	reply(ok, (unsigned)self.db.sequence, nil, NO, ok ? nil : OSStatusError(-10811, nil));
+}
+- (void)unregisterBundleUnit:(unsigned)unit options:(unsigned)o completionHandler:(void (^)(BOOL, NSError *))reply { Log(@"modify: unregisterBundleUnit %u", unit); reply(YES, nil); }
+- (void)registerContainerURL:(NSURL *)url completionHandler:(void (^)(unsigned, NSError *))reply { Log(@"modify: registerContainerURL %@", url); reply(4, nil); }
+/* the Mac's lsd answers with the 24-byte Container record of the volume, current state (captured: 13000100 c42ab430 67456400 00000000 04000000 00000000 for unit 4);
+ * a nil answer makes the client ask again and fail.  Ours: the record as it is in our database (all zero: the volume state is not computed yet, fields not decoded) */
+- (void)updateContainerUnit:(unsigned)unit completionHandler:(void (^)(NSData *, NSError *))reply { Log(@"modify: updateContainerUnit %u", unit); uint8_t z[24] = { 0 }; reply([NSData dataWithBytes: z length: sizeof z], nil); }
+- (void)removeContainer:(unsigned)unit { Log(@"modify: removeContainer %u", unit); }
+- (void)registerExtensionPoint:(NSString *)n platform:(unsigned)p declaringURL:(NSURL *)u withInfo:(NSDictionary *)i completionHandler:(void (^)(BOOL, NSError *))reply { Log(@"modify: registerExtensionPoint %@", n); reply(YES, nil); }
+- (void)unregisterExtensionPoint:(NSString *)n platform:(unsigned)p withVersion:(NSString *)v parentBundleUnit:(unsigned)b completionHandler:(void (^)(BOOL, NSError *))reply { Log(@"modify: unregisterExtensionPoint %@", n); reply(YES, nil); }
+- (void)performPostInstallationRegistration:(NSArray *)a personaUniqueStrings:(NSArray *)ps operationUUID:(NSUUID *)op reply:(void (^)(id, id, NSError *))reply { Log(@"modify: performPostInstallationRegistration"); reply(nil, nil, OSStatusError(-4, nil)); }
+- (void)performPostUninstallationUnregistrationOfBundleID:(NSString *)b operationUUID:(NSUUID *)op unregisterType:(unsigned)t precondition:(id)pre reply:(void (^)(id, NSError *))reply { Log(@"modify: performPostUninstallationUnregistration %@", b); reply(nil, OSStatusError(-4, nil)); }
+- (void)performUpdateOfPersonasOfBundleIDs:(NSSet *)b toPersonaUniqueStrings:(NSSet *)p operationUUID:(NSUUID *)op reply:(void (^)(id, NSError *))reply { reply(nil, OSStatusError(-4, nil)); }
+- (void)updateRecordForApp:(NSString *)b withSINF:(NSDictionary *)s iTunesMetadata:(NSDictionary *)i placeholderMetadata:(NSDictionary *)p sendNotification:(int)n operationUUID:(NSUUID *)op returnSaveToken:(BOOL)t completionHandler:(void (^)(BOOL, id, NSError *))reply { reply(NO, nil, OSStatusError(-4, nil)); }
+- (void)setHandler:(NSString *)b version:(struct { unsigned char v[32]; })v forURLScheme:(NSString *)s completionHandler:(void (^)(BOOL, NSError *))reply { Log(@"modify: setHandler %@ for scheme %@", b, s); reply(YES, nil); }
+- (void)setHandler:(NSString *)b version:(struct { unsigned char v[32]; })v roles:(unsigned)r forContentType:(NSString *)t completionHandler:(void (^)(BOOL, NSError *))reply { Log(@"modify: setHandler %@ for type %@", b, t); reply(YES, nil); }
+- (void)removeHandlerForURLScheme:(NSString *)s completionHandler:(void (^)(BOOL, NSError *))reply { reply(YES, nil); }
+- (void)removeHandlerForContentType:(NSString *)t roles:(unsigned)r completionHandler:(void (^)(BOOL, NSError *))reply { reply(YES, nil); }
+- (void)removeAllHandlerPrefsForBundleID:(NSString *)b completionHandler:(void (^)(BOOL, NSError *))reply { reply(YES, nil); }
+- (void)removeAllHandlersWithCompletionHandler:(void (^)(BOOL, NSError *))reply { reply(YES, nil); }
+- (void)setPreferenceValue:(id)v forKey:(NSString *)k forApplicationAtURL:(NSURL *)u completionHandler:(void (^)(BOOL, NSError *))reply { Log(@"modify: setPreferenceValue %@", k); reply(YES, nil); }
+- (void)setPreferenceValueForCallingApplication:(id)v forKey:(NSString *)k completionHandler:(void (^)(BOOL, NSError *))reply { Log(@"modify: setPreferenceValueForCallingApplication %@", k); reply(YES, nil); }
+- (void)setDatabaseIsSeeded:(BOOL)seeded completionHandler:(void (^)(BOOL, NSError *))reply { Log(@"modify: setDatabaseIsSeeded %d", seeded); reply(YES, nil); }
+- (void)garbageCollectDatabaseWithCompletionHandler:(void (^)(BOOL, NSError *))reply { reply(YES, nil); }
+- (void)resetServerStoreWithCompletionHandler:(void (^)(BOOL, NSError *))reply { BOOL ok = [self.db writeDatabase]; reply(ok, nil); }
+- (void)removeDatabaseStoreOnNextOpportunity:(void (^)(BOOL, NSError *))reply { reply(YES, nil); }
+- (void)forceSaveForTestingWithCompletion:(void (^)(NSError *))reply { reply(nil); }
+- (void)requestLSDExitSafely:(double)t completionHandler:(void (^)(BOOL, NSError *))reply { reply(YES, nil); }
+- (void)registerSelf { }
+- (void)synchronizeWithMobileInstallation { }
+- (BOOL)listener:(NSXPCListener *)listener shouldAcceptNewConnection:(NSXPCConnection *)c
+{
+	NSXPCInterface *i = MSG(id, id, SEL)(NSClassFromString(@"_LSDModifyService"), sel_registerName("XPCInterface"));
+	if (!i) return NO;
+	c.exportedInterface = i;
+	c.exportedObject = self;
+	[c resume];
+	Log(@"modify: connection");
+	return YES;
+}
+@end
+
 int main(void)
 {
 	@autoreleasepool {
 		if (!dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_NOW)) { fprintf(stderr, "lsd: CoreServices: %s\n", dlerror()); return 1; }
 		LSDReadService *read = [LSDReadService new];
 		read.storePath = StorePath();
+		read.registered = [NSMutableArray array];
 		if (![read writeDatabase]) fprintf(stderr, "lsd: cannot write the database %s\n", read.storePath.UTF8String);
 		NSXPCListener *mapdb = [[NSXPCListener alloc] initWithMachServiceName: @"com.apple.lsd.mapdb"];
 		mapdb.delegate = read;
 		[mapdb resume];
+		LSDModifyService *modify = [LSDModifyService new];
+		modify.db = read;
+		NSXPCListener *modifydb = [[NSXPCListener alloc] initWithMachServiceName: @"com.apple.lsd.modifydb"];
+		modifydb.delegate = modify;
+		[modifydb resume];
 		[[NSRunLoop currentRunLoop] run];
 	}
 	return 0;

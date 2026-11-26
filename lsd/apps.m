@@ -50,7 +50,7 @@ static id CompactPlist(id o)
 static uint32_t PlistUnit(ls_db *db, id obj)
 {
 	if (!obj) return 0;
-	NSData *d = [NSPropertyListSerialization dataWithPropertyList: CompactPlist(obj) format: NSPropertyListBinaryFormat_v1_0 options: 0 error: NULL];
+	NSData *d = [NSPropertyListSerialization dataWithPropertyList: CompactPlist(obj) format: (NSPropertyListFormat)200 /* NSPropertyListBinaryFormat_v1_0 of Apple's headers (the open headers of the FreeBSD build have another value) */ options: 0 error: NULL];
 	if (!d) return 0;
 	NSMutableData *u = [NSMutableData dataWithBytes: "lnch" length: 4];
 	[u appendData: d];

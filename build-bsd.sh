@@ -18,11 +18,13 @@ PY
 T="--target=x86_64-apple-macosx14.0 -DXNU_PLATFORM_MacOSX -nostdinc -isystem $RES -isystem $I"
 OBJC="$T -x objective-c -fobjc-runtime=macosx-14.0 -fobjc-arc -Wno-everything -Werror=implicit-function-declaration -Werror=int-conversion -O1 -isystem $OUT/ravyn -isystem $W/sdk/stubs -I$H/compat -include $H/compat/LSCompat.h"
 ERR=0
-o="$OUT/o/lsd.o"; clang $OBJC -c "$H/lsd/main.m" -o "$o" 2>"$o.err" || { ERR=1; echo "== lsd"; grep error "$o.err" | head -30; }
+for f in main apps commonstrings; do o="$OUT/o/lsd-$f.o"; clang $OBJC -c "$H/lsd/$f.m" -o "$o" 2>"$o.err" || { ERR=1; echo "== lsd/$f"; grep error "$o.err" | head -30; }; done
 for f in csstore lsdb; do clang $T -std=gnu11 -Wno-everything -O1 -c "$H/store/$f.c" -o "$OUT/o/$f.o" || ERR=1; done
 [ $ERR = 0 ] || { echo "compile errors"; exit 1; }
 for n in Foundation CoreFoundation; do
 	V=A; [ $n = Foundation ] && V=C; mkdir -p "$OUT/fw/$n.framework"; printf -- "--- !tapi-tbd\ntbd-version:     4\ntargets:         [ x86_64-macos ]\ninstall-name:    '/System/Library/Frameworks/$n.framework/Versions/$V/$n'\ncurrent-version: 1\nexports:\n  - targets:         [ x86_64-macos ]\n    symbols:         []\n...\n" > "$OUT/fw/$n.framework/$n.tbd"; done
 L="-arch x86_64 -platform_version macos 14.0 14.0 -undefined dynamic_lookup -F$OUT/fw -L$P/darwinator/tests/macho-toolchain -L$P/darwinator/tests/macho-toolchain/objc -lSystem -lobjc"
-$LD $L -framework Foundation -framework CoreFoundation -o "$OUT/lsd" "$OUT/o/lsd.o" "$OUT/o/csstore.o" "$OUT/o/lsdb.o"
+$LD $L -framework Foundation -framework CoreFoundation -o "$OUT/lsd" "$OUT"/o/lsd-*.o "$OUT/o/csstore.o" "$OUT/o/lsdb.o"
 file "$OUT/lsd" | cut -c1-110
+# tests (WITH_TESTS=1): test/lsquery.m
+if [ -n "$WITH_TESTS" ]; then clang $OBJC -c "$H/test/lsquery.m" -o "$OUT/o/lsquery.o" && $LD $L -framework Foundation -framework CoreFoundation -o "$OUT/lsquery" "$OUT/o/lsquery.o"; fi
