@@ -58,3 +58,4 @@ typedef NSUInteger NSXPCConnectionOptions;
 @interface NSURL (LSCompatBookmark)
 - (NSData *)bookmarkDataWithOptions:(NSUInteger)options includingResourceValuesForKeys:(NSArray *)keys relativeToURL:(NSURL *)relativeURL error:(NSError **)error;
 @end
+extern NSString *const NSURLVolumeIdentifierKey;
