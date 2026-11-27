@@ -11,6 +11,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make -f Makefile.lsd build/lsd
+  launchservicesd:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: make -f Makefile.lsd build/launchservicesd && clang -Wall test/lsvd_check.c -o build/lsvd_check
+      - name: test job (user domain, service com.pearos.t.lsd) and the checks against it
+        run: |
+          mkdir -p ~/Library/LaunchAgents && sed "s|@PROGRAM@|$PWD/build/launchservicesd|" test/launchd/com.pearos.t.lsd.plist > ~/Library/LaunchAgents/com.pearos.t.lsd.plist
+          launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.pearos.t.lsd.plist || launchctl load ~/Library/LaunchAgents/com.pearos.t.lsd.plist
+          __LSXPCSERVICENAME=com.pearos.t.lsd build/lsvd_check
+      - name: the same checks against the runner's own launchservicesd (the reference is macOS 26.7.2; other versions may differ)
+        continue-on-error: true
+        run: build/lsvd_check
+      - name: daemon log
+        if: always()
+        run: tail -50 /tmp/lsvd-test.err || true
   liblaunchservicessupport:
     runs-on: macos-latest
     steps:

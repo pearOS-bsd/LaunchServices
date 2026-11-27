@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.pearos.t.lsd</string>
+	<key>MachServices</key>
+	<dict>
+		<key>com.pearos.t.lsd</key>
+		<true/>
+	</dict>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@PROGRAM@</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>LSVD_SERVICE_NAME</key>
+		<string>com.pearos.t.lsd</string>
+		<key>LSVD_LOG</key>
+		<string>1</string>
+	</dict>
+	<key>StandardErrorPath</key>
+	<string>/tmp/lsvd-test.err</string>
+</dict>
+</plist>
