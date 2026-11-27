@@ -2,6 +2,8 @@
  *   lsquery BUNDLE-ID /path/App.app [points]
  *   lsquery -b PATH   makes CFURL bookmark data of PATH and resolves it again (what the Alias units hold)
  *   lsquery -i APP...  runs IconServices' recipe for each application in turn, in this process (a hang shows which one)
+ *   lsquery -v        prints what os_variant_is_darwinos answers for Launch Services (true makes its client refuse to connect to launchservicesd)
+ *   lsquery -c        the CPS notifications of the main SkyLight connection (what the real Dock registers at start: CPSModifyConnectionNotifications(cid, 0xd000, 0, 0))
  *   lsquery -e        lists every application record the client sees (count, then identifier and URL of each) */
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
@@ -10,7 +12,21 @@
 int main(int argc, char **argv)
 {
 	@autoreleasepool {
-		if (argc < 2 || (argc < 3 && strcmp(argv[1], "-e"))) return 2;
+		if (argc < 2 || (argc < 3 && strcmp(argv[1], "-e") && strcmp(argv[1], "-v") && strcmp(argv[1], "-c"))) return 2;
+		if (!strcmp(argv[1], "-c")) {
+			dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_NOW);
+			int (*mainc)(void) = (int (*)(void))dlsym(RTLD_DEFAULT, "SLSMainConnectionID");
+			int (*mod)(int, unsigned, unsigned, void *) = (int (*)(int, unsigned, unsigned, void *))dlsym(RTLD_DEFAULT, "SLPSModifyConnectionNotifications");
+			int cid = mainc ? mainc() : -1;
+			fprintf(stderr, "main connection %d (%#x)\n", cid, cid);
+			fprintf(stderr, "CPSModifyConnectionNotifications: %d\n", mod ? mod(cid, 0xd000, 0, 0) : -9999);
+			return 0;
+		}
+		if (!strcmp(argv[1], "-v")) {
+			_Bool (*isd)(const char *) = (_Bool (*)(const char *))dlsym(RTLD_DEFAULT, "os_variant_is_darwinos");
+			fprintf(stderr, "os_variant_is_darwinos: %d\n", isd ? isd("com.apple.launchservices.coreapplicationservices") : -1);
+			return 0;
+		}
 		dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_NOW);
 		dlopen("/System/Library/PrivateFrameworks/IconServices.framework/IconServices", RTLD_NOW);
 		if (!strcmp(argv[1], "-i")) {
