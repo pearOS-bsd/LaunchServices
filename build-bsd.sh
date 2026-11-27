@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds lsd ON FreeBSD (pearOS), without a Mac: clang for x86_64-apple-macosx + ld64.lld, the open header tree of dyld/tools/sdk,
+# Builds lsd and launchservicesd ON FreeBSD (pearOS), without a Mac: clang for x86_64-apple-macosx + ld64.lld, the open header tree of dyld/tools/sdk,
 # compat/LSCompat.h for what it lacks, text-stub frameworks (install names only: the symbols bind at run time to the frameworks dyld finds), -undefined dynamic_lookup.
 #   sh build-bsd.sh OUTDIR      SDK_WORK (default /root/oss) = where dyld/tools/sdk was run; ../darwinator (macho-toolchain: libSystem / libobjc stubs) next to this repository
 set -e
@@ -26,5 +26,9 @@ for n in Foundation CoreFoundation; do
 L="-arch x86_64 -platform_version macos 14.0 14.0 -undefined dynamic_lookup -F$OUT/fw -L$P/darwinator/tests/macho-toolchain -L$P/darwinator/tests/macho-toolchain/objc -lSystem -lobjc"
 $LD $L -framework Foundation -framework CoreFoundation -o "$OUT/lsd" "$OUT"/o/lsd-*.o "$OUT/o/csstore.o" "$OUT/o/lsdb.o"
 file "$OUT/lsd" | cut -c1-110
+# launchservicesd (C + blocks; libxpc, libdispatch and CoreFoundation of the Mac at run time; launchservicesd/compat/lsvd_xpc.h for the xpc declarations)
+clang $T -std=gnu11 -fblocks -Wno-everything -Werror=implicit-function-declaration -Werror=int-conversion -O1 -c "$H/launchservicesd/launchservicesd.c" -o "$OUT/o/launchservicesd.o"
+$LD $L -framework CoreFoundation -o "$OUT/launchservicesd" "$OUT/o/launchservicesd.o"
+file "$OUT/launchservicesd" | cut -c1-110
 # tests (WITH_TESTS=1): test/lsquery.m
 if [ -n "$WITH_TESTS" ]; then clang $OBJC -c "$H/test/lsquery.m" -o "$OUT/o/lsquery.o" && $LD $L -framework Foundation -framework CoreFoundation -o "$OUT/lsquery" "$OUT/o/lsquery.o"; fi
