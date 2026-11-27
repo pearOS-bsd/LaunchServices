@@ -1,6 +1,7 @@
 /* Test (pearOS and macOS): asks Launch Services for an application by identifier and by URL, then runs IconServices' recipe for its icon in this process.
  *   lsquery BUNDLE-ID /path/App.app [points]
  *   lsquery -b PATH   makes CFURL bookmark data of PATH and resolves it again (what the Alias units hold)
+ *   lsquery -i APP...  runs IconServices' recipe for each application in turn, in this process (a hang shows which one)
  *   lsquery -e        lists every application record the client sees (count, then identifier and URL of each) */
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
@@ -10,6 +11,22 @@ int main(int argc, char **argv)
 {
 	@autoreleasepool {
 		if (argc < 2 || (argc < 3 && strcmp(argv[1], "-e"))) return 2;
+		dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_NOW);
+		dlopen("/System/Library/PrivateFrameworks/IconServices.framework/IconServices", RTLD_NOW);
+		if (!strcmp(argv[1], "-i")) {
+			for (int k = 2; k < argc; k++) {
+				id icon = ((id (*)(id, SEL, id))objc_msgSend)([NSClassFromString(@"ISBundleIcon") alloc], sel_registerName("initWithBundleURL:"), [NSURL fileURLWithPath: @(argv[k])]);
+				id d = ((id (*)(id, SEL, CGSize, double))objc_msgSend)([NSClassFromString(@"ISImageDescriptor") alloc], sel_registerName("initWithSize:scale:"), CGSizeMake(58, 58), 1.0);
+				id req = [NSClassFromString(@"ISGenerationRequest") new];
+				((void (*)(id, SEL, id))objc_msgSend)(req, sel_registerName("setIcon:"), icon);
+				((void (*)(id, SEL, id))objc_msgSend)(req, sel_registerName("setImageDescriptor:"), d);
+				id ids = nil; NSDate *t = [NSDate date];
+				fprintf(stderr, "%s: ", argv[k]);
+				id img = ((id (*)(id, SEL, id *))objc_msgSend)(req, sel_registerName("generateImageReturningRecordIdentifiers:"), &ids);
+				fprintf(stderr, "%s in %.2f s\n", img ? "image" : "nil", -[t timeIntervalSinceNow]);
+			}
+			return 0;
+		}
 		if (!strcmp(argv[1], "-b")) {
 			NSError *be = nil;
 			NSData *bm = [[NSURL fileURLWithPath: @(argv[2])] bookmarkDataWithOptions: 0 includingResourceValuesForKeys: nil relativeToURL: nil error: &be];
@@ -20,8 +37,6 @@ int main(int argc, char **argv)
 			fprintf(stderr, "resolved: %s (error %s)\n", u ? u.path.UTF8String : "nil", be ? [[be description] UTF8String] : "-");
 			return 0;
 		}
-		dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_NOW);
-		dlopen("/System/Library/PrivateFrameworks/IconServices.framework/IconServices", RTLD_NOW);
 		NSError *e = nil;
 		if (!strcmp(argv[1], "-e")) {
 			id ctx = ((id (*)(id, SEL))objc_msgSend)(NSClassFromString(@"LSDatabaseContext"), sel_registerName("sharedDatabaseContext"));
