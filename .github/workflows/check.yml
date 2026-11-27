@@ -11,3 +11,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make -f Makefile.lsd build/lsd
+  liblaunchservicessupport:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build (x86_64)
+        run: sh libLaunchServicesSupport/build-mac.sh out
+      - name: exports are Apple's 78
+        run: |
+          nm -gU -j out/libLaunchServicesSupport.dylib | sort > got.txt
+          sort libLaunchServicesSupport/exports.txt | diff - got.txt
+          otool -D out/libLaunchServicesSupport.dylib | grep -x /usr/lib/libLaunchServicesSupport.dylib
+      - name: compare with the runner's Apple dylib (x86_64 under Rosetta; the reference is macOS 26.7.2, other versions may differ)
+        continue-on-error: true
+        run: |
+          cp out/libLaunchServicesSupport.dylib out/ours-test.dylib
+          install_name_tool -id /tmp/lsss-ours-test.dylib out/ours-test.dylib && codesign -f -s - out/ours-test.dylib
+          clang++ -arch x86_64 -std=gnu++20 -fobjc-arc test/lsss_check.mm -framework Foundation -framework AppKit -framework CoreServices -framework Security -o out/lsss_check
+          arch -x86_64 out/lsss_check /usr/lib/libLaunchServicesSupport.dylib $PWD/out/ours-test.dylib

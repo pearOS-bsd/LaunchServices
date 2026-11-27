@@ -21,4 +21,26 @@ Checked (2026-11-26):
 - 2026-11-27, records: the store now has the 8 binding class names, the persisted string cache, immediate short strings, string bindings and Bundle records (byte-identical to research `lsbuild.py` for the same input). Mac VM, Apple's client against our lsd (182 applications of /System/Applications, CoreServices, /Applications registered): the database is accepted (sequence 729 and our UUID come back), `LSBundleRecord bundleRecordWithBundleIdentifier: com.apple.calculator` finds it with its URL, `LSCopyDisplayNameForURL` gives "Calculator", and IconServices' recipe renders its icon from the record.
 Next: Bundle records from the bundles on disk (`registerItemInfo` of `com.apple.lsd.modifydb`), Claim / Type records, `launchservicesd`.
 
+## libLaunchServicesSupport.dylib (Apple's private `/usr/lib/libLaunchServicesSupport.dylib`, macOS 26.7.2)
+ABI-compatible replacement: same install name (compatibility / current version 1.0.0), the same 78 x86_64 exports (`libLaunchServicesSupport/exports.txt`),
+the same linked libraries in the same order, the same behaviour. Only Dock (`_LSForceQuitApplication`, `_kLSForceQuitApplicationPresentFirstForceQuitDialogKey`)
+and loginwindow (those and `_LSRegisterAsQuitReallyHelperClient`) link it. Evidence per symbol: `research/docs/LAUNCHSERVICESSUPPORT.md`.
+
+| part | what |
+|---|---|
+| `libLaunchServicesSupport/QuitSupport.mm` | `_LSForceQuitApplication` (libquit `LQReportHang`, coalition SIGTERM, proc-exit source, SIGKILL after 3 s, `_LSApplicationQuitting`), `_LSRegisterAsQuitReallyHelperClient` (entitlement checks, os_state handlers, BTM force-quit handler), `_LSSysdiagnoseStatus`, `_LSApplicationHasAVisibleWindowOrContext` (SkyLight accessibility report), classes `LSExitedApplication` and `BTMManagerSupport` |
+| `libLaunchServicesSupport/CFSupport.mm` | the C++ CF helpers (`asString`, `CFArray*`, `CFDictionary*`, `CFSet*`, hex, `processName` ...), with Apple's odd corners kept |
+| `libLaunchServicesSupport/Support.m` | the 21 `_LS…Log` getters (`com.apple.launchservices`), version symbols, `loggableURL`, `backtraceString` |
+| `libLaunchServicesSupport/build-bsd.sh` | build on FreeBSD (clang + ld64.lld, llvm-project libc++ headers = the Mac's libc++ ABI, text stubs, `compat/` for missing headers; `compat/os/log.h` emits real `_os_log_impl` calls) |
+| `libLaunchServicesSupport/build-mac.sh` | build on a Mac (to compare) |
+| `test/lsss_check.mm` | loads Apple's dylib and ours and compares 203 results (exports, logs, CF helpers, ObjC metadata, the quit entry points, a force quit of an app the test starts) |
+
+Checked 2026-11-27 on the Mac VM (26.7.2): 203/203 equal for the Mac build and for the dylib built on FreeBSD; the unified-log lines of a force quit are the same.
+Not yet run on the pearOS ISO.
+
+    sh libLaunchServicesSupport/build-bsd.sh OUT          # FreeBSD, SDK_WORK=/root/oss
+    sh libLaunchServicesSupport/build-mac.sh OUT          # Mac
+    clang++ -std=gnu++20 -fobjc-arc test/lsss_check.mm -framework Foundation -framework AppKit -framework CoreServices -framework Security -o lsss_check
+    ./lsss_check /usr/lib/libLaunchServicesSupport.dylib OUT/ours-test.dylib   # ours copied with install_name_tool -id /tmp/x.dylib
+
 The launchd jobs (`launchd/*.plist`, the format of the Mac's; on pearOS the launchd of `d` reads them, `@USER@` is the console user, put in by rc.d/wsbsd_macstack of the image): the agent and lsd run as the user and start on demand, like the Mac's per-user jobs.
